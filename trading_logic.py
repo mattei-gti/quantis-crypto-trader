@@ -19,65 +19,70 @@ class TradingLogic:
         self.symbol = 'BTC/USDT'
         self.stop_loss = 84000
         self.last_buy_price = None
+        self.last_check_time = 0
+        self.check_interval = 60  # Intervalo de consulta à Binance/Grok
 
     async def monitor_and_trade(self):
         while True:
             if not self.telegram.running:
                 print("QCT parado. Aguardando comando /start no Telegram.")
                 logging.info("QCT parado.")
-                await asyncio.sleep(10)
+                await asyncio.sleep(1)  # Checa estado a cada 1 segundo
                 continue
 
-            try:
-                ticker = self.client.get_ticker(self.symbol)
-                price = ticker['last_price']
-                balance = self.client.get_balance()['total']
-                usdt_balance = balance.get('USDT', 0)
-                btc_balance = balance.get('BTC', 0)
+            current_time = time.time()
+            if current_time - self.last_check_time >= self.check_interval:
+                try:
+                    ticker = self.client.get_ticker(self.symbol)
+                    price = ticker['last_price']
+                    balance = self.client.get_balance()['total']
+                    usdt_balance = balance.get('USDT', 0)
+                    btc_balance = balance.get('BTC', 0)
 
-                message = f"Monitorando {self.symbol}: Preço atual = {price} USDT"
-                print(message)
-                logging.info(message)
-                await self.telegram.send_message(message)
-
-                signal = self.grok.get_trading_signal(self.symbol, ticker)
-                message = f"Sinal da Grok: {signal}"
-                print(message)
-                logging.info(message)
-                await self.telegram.send_message(message)
-
-                if signal == 'buy' and usdt_balance > 10:
-                    amount = 0.001
-                    order = self.client.exchange.create_market_buy_order(self.symbol, amount)
-                    self.last_buy_price = price
-                    message = f"Compra executada: {amount} BTC a {price} USDT (Sinal: {signal})"
+                    message = f"Monitorando {self.symbol}: Preço atual = {price} USDT"
                     print(message)
                     logging.info(message)
                     await self.telegram.send_message(message)
 
-                elif signal == 'sell' and btc_balance >= 0.001:
-                    amount = 0.001
-                    order = self.client.exchange.create_market_sell_order(self.symbol, amount)
-                    message = f"Venda executada: {amount} BTC a {price} USDT (Sinal: {signal})"
+                    signal = self.grok.get_trading_signal(self.symbol, ticker)
+                    message = f"Sinal da Grok: {signal}"
                     print(message)
                     logging.info(message)
                     await self.telegram.send_message(message)
-                    self.last_buy_price = None
 
-                elif self.last_buy_price and price < self.stop_loss and btc_balance >= 0.001:
-                    amount = 0.001
-                    order = self.client.exchange.create_market_sell_order(self.symbol, amount)
-                    message = f"Stop-Loss acionado: Vendido {amount} BTC a {price} USDT (Compra em {self.last_buy_price})"
-                    print(message)
-                    logging.info(message)
-                    await self.telegram.send_message(message)
-                    self.last_buy_price = None
+                    if signal == 'buy' and usdt_balance > 10:
+                        amount = 0.001
+                        order = self.client.exchange.create_market_buy_order(self.symbol, amount)
+                        self.last_buy_price = price
+                        message = f"Compra executada: {amount} BTC a {price} USDT (Sinal: {signal})"
+                        print(message)
+                        logging.info(message)
+                        await self.telegram.send_message(message)
 
-                time.sleep(60)
+                    elif signal == 'sell' and btc_balance >= 0.001:
+                        amount = 0.001
+                        order = self.client.exchange.create_market_sell_order(self.symbol, amount)
+                        message = f"Venda executada: {amount} BTC a {price} USDT (Sinal: {signal})"
+                        print(message)
+                        logging.info(message)
+                        await self.telegram.send_message(message)
+                        self.last_buy_price = None
 
-            except Exception as e:
-                error_message = f"Erro no monitoramento: {str(e)}"
-                print(error_message)
-                logging.error(error_message)
-                await self.telegram.send_message(error_message)
-                time.sleep(60)
+                    elif self.last_buy_price and price < self.stop_loss and btc_balance >= 0.001:
+                        amount = 0.001
+                        order = self.client.exchange.create_market_sell_order(self.symbol, amount)
+                        message = f"Stop-Loss acionado: Vendido {amount} BTC a {price} USDT (Compra em {self.last_buy_price})"
+                        print(message)
+                        logging.info(message)
+                        await self.telegram.send_message(message)
+                        self.last_buy_price = None
+
+                    self.last_check_time = current_time
+
+                except Exception as e:
+                    error_message = f"Erro no monitoramento: {str(e)}"
+                    print(error_message)
+                    logging.error(error_message)
+                    await self.telegram.send_message(error_message)
+
+            await asyncio.sleep(1)  # Intervalo curto para checar estado
