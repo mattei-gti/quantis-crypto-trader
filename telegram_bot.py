@@ -18,17 +18,17 @@ class TelegramBot:
     async def send_message(self, message):
         await self.bot.send_message(chat_id=self.chat_id, text=message)
 
-    def start(self, update, context):
+    async def start(self, update, context):
         self.running = True
-        update.message.reply_text("QCT iniciado!")
+        await update.message.reply_text("QCT iniciado!")
 
-    def stop(self, update, context):
+    async def stop(self, update, context):
         self.running = False
-        update.message.reply_text("QCT parado!")
+        await update.message.reply_text("QCT parado!")
 
-    def status(self, update, context):
+    async def status(self, update, context):
         status = "QCT rodando" if self.running else "QCT parado"
-        update.message.reply_text(status)
+        await update.message.reply_text(status)
 
     def setup_handlers(self):
         self.application.add_handler(CommandHandler("start", self.start))
