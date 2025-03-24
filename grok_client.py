@@ -7,7 +7,7 @@ load_dotenv()
 class GrokClient:
     def __init__(self):
         self.api_key = os.getenv('GROK_API_KEY')
-        self.endpoint = 'https://api.grok.xai.com/v1/signal'  # Substitua pelo endpoint real
+        self.endpoint = 'https://grok-api-4zap.onrender.com/v1/grok'  # Endpoint oficial
 
     def get_trading_signal(self, symbol, price_data):
         headers = {
@@ -24,8 +24,7 @@ class GrokClient:
             response = requests.post(self.endpoint, json=payload, headers=headers)
             response.raise_for_status()
             data = response.json()
-            # Ajuste conforme a estrutura real da resposta
-            signal = data.get('signal', 'hold')  # Exemplo: {'signal': 'buy'}
+            signal = data.get('signal', 'hold')
             return signal.lower()
         except requests.exceptions.RequestException as e:
             print(f"Erro na API Grok: {str(e)}")
