@@ -20,14 +20,15 @@ class TradingLogic:
         self.stop_loss = 84000
         self.last_buy_price = None
         self.last_check_time = 0
-        self.check_interval = 60  # Intervalo de consulta à Binance/Grok
+        self.check_interval = 60
+        self.recent_prices = []  # Armazena últimos 5 preços
 
     async def monitor_and_trade(self):
         while True:
             if not self.telegram.running:
                 print("QCT parado. Aguardando comando /start no Telegram.")
                 logging.info("QCT parado.")
-                await asyncio.sleep(1)  # Checa estado a cada 1 segundo
+                await asyncio.sleep(1)
                 continue
 
             current_time = time.time()
@@ -35,16 +36,22 @@ class TradingLogic:
                 try:
                     ticker = self.client.get_ticker(self.symbol)
                     price = ticker['last_price']
+                    volume = ticker.get('volume', 0)  # Volume do ticker
                     balance = self.client.get_balance()['total']
                     usdt_balance = balance.get('USDT', 0)
                     btc_balance = balance.get('BTC', 0)
 
-                    message = f"Monitorando {self.symbol}: Preço atual = {price} USDT"
+                    # Atualiza histórico de preços (últimos 5)
+                    self.recent_prices.append(price)
+                    if len(self.recent_prices) > 5:
+                        self.recent_prices.pop(0)
+
+                    message = f"Monitorando {self.symbol}: Preço atual = {price} USDT, Volume = {volume}"
                     print(message)
                     logging.info(message)
                     await self.telegram.send_message(message)
 
-                    signal = self.grok.get_trading_signal(self.symbol, ticker)
+                    signal = self.grok.get_trading_signal(self.symbol, ticker, volume, self.recent_prices)
                     message = f"Sinal da Grok: {signal}"
                     print(message)
                     logging.info(message)
@@ -85,4 +92,4 @@ class TradingLogic:
                     logging.error(error_message)
                     await self.telegram.send_message(error_message)
 
-            await asyncio.sleep(1)  # Intervalo curto para checar estado
+            await asyncio.sleep(1)
