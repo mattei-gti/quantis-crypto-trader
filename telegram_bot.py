@@ -14,6 +14,7 @@ class TelegramBot:
         self.application = Application.builder().token(self.token).build()
         self.running = False
         self.setup_handlers()
+        self.trading_logic = None  # Referência ao TradingLogic será setada depois
 
     async def send_message(self, message):
         await self.bot.send_message(chat_id=self.chat_id, text=message)
@@ -30,10 +31,17 @@ class TelegramBot:
         status = "QCT rodando" if self.running else "QCT parado"
         await update.message.reply_text(status)
 
+    async def report(self, update, context):
+        if self.trading_logic:
+            await self.trading_logic.send_report()
+        else:
+            await update.message.reply_text("Erro: TradingLogic não configurado.")
+
     def setup_handlers(self):
         self.application.add_handler(CommandHandler("start", self.start))
         self.application.add_handler(CommandHandler("stop", self.stop))
         self.application.add_handler(CommandHandler("status", self.status))
+        self.application.add_handler(CommandHandler("report", self.report))
 
     async def run(self):
         await self.application.initialize()

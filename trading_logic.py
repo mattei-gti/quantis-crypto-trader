@@ -15,6 +15,7 @@ class TradingLogic:
     def __init__(self, api_key, secret_key):
         self.client = BinanceClient(api_key, secret_key)
         self.telegram = TelegramBot()
+        self.telegram.trading_logic = self  # Conecta ao TelegramBot
         self.grok = GrokClient()
         self.symbols = ['BTC/USDT', 'ETH/USDT', 'BNB/USDT']
         self.stop_loss = {'BTC/USDT': 84000, 'ETH/USDT': 2500, 'BNB/USDT': 500}
@@ -22,7 +23,30 @@ class TradingLogic:
         self.last_check_time = 0
         self.check_interval = 60
         self.recent_prices = {symbol: [] for symbol in self.symbols}
-        self.min_notional = {'BTC/USDT': 10, 'ETH/USDT': 10, 'BNB/USDT': 10}  # Mínimo em USDT
+        self.min_notional = {'BTC/USDT': 10, 'ETH/USDT': 10, 'BNB/USDT': 10}
+        self.trades = {symbol: {'buy': 0, 'sell': 0, 'total_usdt': 0} for symbol in self.symbols}
+
+    async def send_report(self):
+        balance = self.client.get_balance()['total']
+        report = "Relatório do QCT:\n"
+        total_usdt = balance.get('USDT', 0)
+        
+        for symbol in self.symbols:
+            base_currency = symbol.split('/')[0]
+            base_balance = balance.get(base_currency, 0)
+            last_price = self.recent_prices[symbol][-1] if self.recent_prices[symbol] else 0
+            value_usdt = base_balance * last_price
+            total_usdt += value_usdt
+            trades = self.trades[symbol]
+            report += (f"{symbol}: Saldo = {base_balance:.4f} {base_currency}, "
+                      f"Valor = {value_usdt:.2f} USDT, "
+                      f"Compras = {trades['buy']}, Vendas = {trades['sell']}, "
+                      f"Total USDT negociado = {trades['total_usdt']:.2f}\n")
+        
+        report += f"Saldo Total Estimado: {total_usdt:.2f} USDT"
+        print(report)
+        logging.info(report)
+        await self.telegram.send_message(report)
 
     async def monitor_and_trade(self):
         while True:
@@ -34,7 +58,7 @@ class TradingLogic:
 
             current_time = time.time()
             if current_time - self.last_check_time < self.check_interval:
-                await asyncio.sleep(1)  # Aguarda até o próximo ciclo de 60s
+                await asyncio.sleep(1)
                 continue
 
             try:
@@ -63,12 +87,13 @@ class TradingLogic:
                     logging.info(message)
                     await self.telegram.send_message(message)
 
-                    # Calcula quantidade mínima para atender o notional
                     amount = max(0.001, self.min_notional[symbol] / price)
 
                     if signal == 'buy' and usdt_balance > self.min_notional[symbol]:
                         order = self.client.exchange.create_market_buy_order(symbol, amount)
                         self.last_buy_price[symbol] = price
+                        self.trades[symbol]['buy'] += 1
+                        self.trades[symbol]['total_usdt'] += amount * price
                         message = f"Compra executada: {amount} {base_currency} a {price} USDT (Sinal: {signal})"
                         print(message)
                         logging.info(message)
@@ -76,6 +101,8 @@ class TradingLogic:
 
                     elif signal == 'sell' and base_balance >= amount:
                         order = self.client.exchange.create_market_sell_order(symbol, amount)
+                        self.trades[symbol]['sell'] += 1
+                        self.trades[symbol]['total_usdt'] += amount * price
                         message = f"Venda executada: {amount} {base_currency} a {price} USDT (Sinal: {signal})"
                         print(message)
                         logging.info(message)
@@ -86,6 +113,8 @@ class TradingLogic:
                           price < self.stop_loss[symbol] and 
                           base_balance >= amount):
                         order = self.client.exchange.create_market_sell_order(symbol, amount)
+                        self.trades[symbol]['sell'] += 1
+                        self.trades[symbol]['total_usdt'] += amount * price
                         message = f"Stop-Loss acionado: Vendido {amount} {base_currency} a {price} USDT (Compra em {self.last_buy_price[symbol]})"
                         print(message)
                         logging.info(message)
@@ -100,4 +129,4 @@ class TradingLogic:
                 logging.error(error_message)
                 await self.telegram.send_message(error_message)
 
-            await asyncio.sleep(1)  # Pequeno delay para evitar uso excessivo de CPU
+            await asyncio.sleep(1)
